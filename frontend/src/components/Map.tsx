@@ -17,7 +17,7 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 interface MapProps {
-  onRouteUpdate: (distance: number) => void;
+  onRouteUpdate: (distance: number, route: [number, number][]) => void;
 }
 
 const LocationMarker = ({ points, setPoints, routeLine }: { points: LatLng[], setPoints: React.Dispatch<React.SetStateAction<LatLng[]>>, routeLine: [number, number][] }) => {
@@ -33,7 +33,7 @@ const LocationMarker = ({ points, setPoints, routeLine }: { points: LatLng[], se
         <Marker key={idx} position={p} />
       ))}
       {routeLine.length > 0 && (
-        <Polyline positions={routeLine} color="#e74c3c" weight={5} opacity={0.8} />
+        <Polyline positions={routeLine} color="#35ec2fff" weight={5} opacity={0.8} />
       )}
     </>
   );
@@ -42,7 +42,7 @@ const LocationMarker = ({ points, setPoints, routeLine }: { points: LatLng[], se
 const Map: React.FC<MapProps> = ({ onRouteUpdate }) => {
   // Default center coordinates (London)
   const defaultCenter: [number, number] = [51.505, -0.09];
-  
+
   // State to hold all the clicked marker points
   const [points, setPoints] = useState<LatLng[]>([]);
   // State to hold the detailed street path returned from OSRM
@@ -50,9 +50,9 @@ const Map: React.FC<MapProps> = ({ onRouteUpdate }) => {
 
   // Fetch route from OSRM whenever points change
   useEffect(() => {
-    if (points.length < 2) {
+    if (points.length < 2) { // can't draw line with less than 2 points
       setRouteLine([]);
-      onRouteUpdate(0);
+      onRouteUpdate(0, []);
       return;
     }
 
@@ -63,25 +63,25 @@ const Map: React.FC<MapProps> = ({ onRouteUpdate }) => {
           .map(p => `${p.lng},${p.lat}`)
           .join(';');
 
-        // Use the 'foot' profile for runners
+        // 'foot' profile for runners
         const url = `http://router.project-osrm.org/route/v1/foot/${coordinatesString}?overview=full&geometries=geojson`;
-        
+
         const response = await fetch(url);
         const data = await response.json();
 
         if (data.code === 'Ok' && data.routes.length > 0) {
           const route = data.routes[0];
-          
+
           // OSRM returns GeoJSON coordinates as [longitude, latitude]
-          // Leaflet expects [latitude, longitude], so we must map and reverse them
+          // Leaflet expects [latitude, longitude], so map and reverse them
           const decodedGeometry: [number, number][] = route.geometry.coordinates.map(
             (coord: [number, number]) => [coord[1], coord[0]]
           );
-          
+
           setRouteLine(decodedGeometry);
-          
+
           // OSRM distance is in meters. Convert to kilometers.
-          onRouteUpdate(route.distance / 1000);
+          onRouteUpdate(route.distance / 1000, decodedGeometry);
         }
       } catch (error) {
         console.error("Error fetching route from OSRM:", error);
@@ -94,10 +94,10 @@ const Map: React.FC<MapProps> = ({ onRouteUpdate }) => {
   return (
     <div className={styles.mapWrapper}>
       {/* Optional: Add a subtle loading indicator if points don't match routeLine ends? */}
-      <MapContainer 
-        center={defaultCenter} 
-        zoom={13} 
-        scrollWheelZoom={true} 
+      <MapContainer
+        center={defaultCenter}
+        zoom={14}
+        scrollWheelZoom={true}
         className={styles.mapContainer}
       >
         <TileLayer

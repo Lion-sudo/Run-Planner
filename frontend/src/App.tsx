@@ -1,29 +1,106 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
+import { supabase } from './supabaseClient';
+import type { Session } from '@supabase/supabase-js';
 import Map from './components/Map';
+import Auth from './components/Auth';
+import History from './components/History';
 import styles from './App.module.css';
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null);
   const [distance, setDistance] = useState(0);
   const [calories, setCalories] = useState(0);
+  const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [duration, setDuration] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const navigate = useNavigate();
 
-  const handleRouteUpdate = (newDistance: number) => {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (!session) {
+    return <Auth />;
+  }
+
+  const handleRouteUpdate = (newDistance: number, newRoute: [number, number][]) => {
     setDistance(newDistance);
-    
-    // Rough estimate: ~62 calories per kilometer for an average runner
-    // (This is highly generalized, but works well for an initial estimate)
     setCalories(Math.round(newDistance * 62));
+    setRouteCoords(newRoute);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const handleSaveRun = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session || !distance || isSaving) return;
+    
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('runs')
+        .insert([
+          {
+            distance: distance,
+            calories: calories,
+            duration_minutes: parseInt(duration),
+            route_coordinates: routeCoords,
+            user_id: session.user.id
+          }
+        ]);
+
+      if (!error) {
+        alert("Run saved successfully!");
+        setShowSaveModal(false);
+        setDuration('');
+        // Optional: clear map or navigate to history
+        navigate('/runs');
+      } else {
+        alert(`Error saving run: ${error.message}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to connect to Supabase.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className={styles.appContainer}>
       {/* Header Area */}
       <header className={styles.header}>
-        <h1>Run Planner</h1>
+        <div className={styles.headerNav}>
+          <Link to="/" className={styles.logo}>Run Planner</Link>
+          <div className={styles.navLinks}>
+            <Link to="/runs" className={styles.navLink}>My History</Link>
+            <button onClick={handleLogout} className={styles.logoutButton}>Logout</button>
+          </div>
+        </div>
       </header>
 
-      {/* Map Area */}
+      {/* Main Routing Area */}
       <main className={styles.mainContent}>
-        <Map onRouteUpdate={handleRouteUpdate} />
+        <Routes>
+          <Route path="/" element={<Navigate to="/map" />} />
+          <Route path="/map" element={<Map onRouteUpdate={handleRouteUpdate} />} />
+          <Route path="/runs" element={<History />} />
+        </Routes>
       </main>
 
       {/* Bottom Control Panel */}
@@ -36,7 +113,40 @@ function App() {
           <div className={styles.statValue}>{calories}</div>
           <div className={styles.statLabel}>Calories</div>
         </div>
+        <button 
+          className={styles.saveButton} 
+          disabled={distance === 0}
+          onClick={() => setShowSaveModal(true)}
+        >
+          Save Run
+        </button>
       </footer>
+
+      {/* Save Run Modal */}
+      {showSaveModal && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <h3>Save your Run</h3>
+            <form onSubmit={handleSaveRun}>
+              <label>How many minutes did you run?</label>
+              <input 
+                type="number" 
+                value={duration} 
+                onChange={(e) => setDuration(e.target.value)} 
+                required 
+                placeholder="Minutes"
+                autoFocus
+              />
+              <div className={styles.modalButtons}>
+                <button type="button" onClick={() => setShowSaveModal(false)}>Cancel</button>
+                <button type="submit" disabled={isSaving}>
+                  {isSaving ? 'Saving...' : 'Confirm Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

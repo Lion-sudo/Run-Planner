@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 import Map from './components/Map';
@@ -17,6 +17,7 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -32,15 +33,15 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (!session) {
-    return <Auth />;
-  }
-
-  const handleRouteUpdate = (newDistance: number, newRoute: [number, number][]) => {
+  const handleRouteUpdate = useCallback((newDistance: number, newRoute: [number, number][]) => {
     setDistance(newDistance);
     setCalories(Math.round(newDistance * 62));
     setRouteCoords(newRoute);
-  };
+  }, []);
+
+  if (!session) {
+    return <Auth />;
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -68,7 +69,9 @@ function App() {
         alert("Run saved successfully!");
         setShowSaveModal(false);
         setDuration('');
-        // Optional: clear map or navigate to history
+        setDistance(0);
+        setCalories(0);
+        setRouteCoords([]);
         navigate('/runs');
       } else {
         alert(`Error saving run: ${error.message}`);
@@ -81,6 +84,8 @@ function App() {
     }
   };
 
+  const isMapPage = location.pathname === '/map' || location.pathname === '/';
+
   return (
     <div className={styles.appContainer}>
       {/* Header Area */}
@@ -88,6 +93,7 @@ function App() {
         <div className={styles.headerNav}>
           <Link to="/" className={styles.logo}>Run Planner</Link>
           <div className={styles.navLinks}>
+            <Link to="/map" className={styles.navLink}>Map</Link>
             <Link to="/runs" className={styles.navLink}>My History</Link>
             <button onClick={handleLogout} className={styles.logoutButton}>Logout</button>
           </div>
@@ -103,24 +109,26 @@ function App() {
         </Routes>
       </main>
 
-      {/* Bottom Control Panel */}
-      <footer className={styles.controlPanel}>
-        <div className={styles.statBox}>
-          <div className={styles.statValue}>{distance.toFixed(2)}</div>
-          <div className={styles.statLabel}>Distance (km)</div>
-        </div>
-        <div className={styles.statBox}>
-          <div className={styles.statValue}>{calories}</div>
-          <div className={styles.statLabel}>Calories</div>
-        </div>
-        <button 
-          className={styles.saveButton} 
-          disabled={distance === 0}
-          onClick={() => setShowSaveModal(true)}
-        >
-          Save Run
-        </button>
-      </footer>
+      {/* Bottom Control Panel - only at map page */}
+      {isMapPage && (
+        <footer className={styles.controlPanel}>
+          <div className={styles.statBox}>
+            <div className={styles.statValue}>{distance.toFixed(2)}</div>
+            <div className={styles.statLabel}>Distance (km)</div>
+          </div>
+          <div className={styles.statBox}>
+            <div className={styles.statValue}>{calories}</div>
+            <div className={styles.statLabel}>Calories</div>
+          </div>
+          <button 
+            className={styles.saveButton} 
+            disabled={distance === 0}
+            onClick={() => setShowSaveModal(true)}
+          >
+            Save Run
+          </button>
+        </footer>
+      )}
 
       {/* Save Run Modal */}
       {showSaveModal && (
